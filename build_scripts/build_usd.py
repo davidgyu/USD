@@ -1360,22 +1360,20 @@ def InstallOpenColorIO(context, force, buildArgs):
                       [("IMPORTED_LOCATION_RELEASE", 
                         "IMPORTED_LOCATION_RELWITHDEBINFO")])
 
-        # When building for Apple Silicon we need to make sure that
-        # the correct build architecture is specified for OCIO and
-        # and for TinyXML and YAML.
-        if MacOS() and apple_utils.IsTargetArm(context):
-            arch = 'arm64'
+        if MacOS():
+            targetArch = apple_utils.GetTargetArch(context)
+
             PatchFile("CMakeLists.txt",
                     [('CMAKE_ARGS      ${TINYXML_CMAKE_ARGS}',
-                    'CMAKE_ARGS      ${TINYXML_CMAKE_ARGS}\n' +
-                    '            CMAKE_CACHE_ARGS -DCMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH:BOOL=TRUE'
-                    ' -DCMAKE_OSX_ARCHITECTURES:STRING="{arch}"'.format(arch=arch)),
-                    ('CMAKE_ARGS      ${YAML_CPP_CMAKE_ARGS}',
-                    'CMAKE_ARGS      ${YAML_CPP_CMAKE_ARGS}\n' +
-                    '            CMAKE_CACHE_ARGS -DCMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH:BOOL=TRUE'
-                    ' -DCMAKE_OSX_ARCHITECTURES:STRING="{arch}"'.format(arch=arch)),
-                    ('set(CMAKE_OSX_ARCHITECTURES x86_64 CACHE STRING',
-                     'set(CMAKE_OSX_ARCHITECTURES "{arch}" CACHE STRING'.format(arch=arch))])
+                      'CMAKE_ARGS      ${TINYXML_CMAKE_ARGS}\n' +
+                      '            CMAKE_CACHE_ARGS -DCMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH:BOOL=TRUE'
+                      ' -DCMAKE_OSX_ARCHITECTURES:STRING="{arch}"'.format(arch=targetArch)),
+                     ('CMAKE_ARGS      ${YAML_CPP_CMAKE_ARGS}',
+                      'CMAKE_ARGS      ${YAML_CPP_CMAKE_ARGS}\n' +
+                      '            CMAKE_CACHE_ARGS -DCMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH:BOOL=TRUE'
+                      ' -DCMAKE_OSX_ARCHITECTURES:STRING="{arch}"'.format(arch=targetArch)),
+                     ('set(CMAKE_OSX_ARCHITECTURES x86_64 CACHE STRING',
+                      'set(CMAKE_OSX_ARCHITECTURES "{arch}" CACHE STRING'.format(arch=targetArch))])
 
         # The OCIO build treats all warnings as errors but several come up
         # on various platforms, including:
@@ -1395,8 +1393,15 @@ def InstallOpenColorIO(context, force, buildArgs):
         else:
             extraArgs.append('-DCMAKE_CXX_FLAGS=-w')
 
-        if MacOS() and apple_utils.IsTargetArm(context):
-            extraArgs.append('-DOCIO_USE_SSE=OFF')
+        if MacOS():
+            #if using version 2 of OCIO we patch a different config path as it resides elsewere
+            PatchFile("src/core/Config.cpp",
+                       [("cacheidnocontext_ = cacheidnocontext_;",
+                         "cacheidnocontext_ = rhs.cacheidnocontext_;")])
+
+            extraArgs.append('-DCMAKE_CXX_FLAGS="-Wno-unused-function -Wno-unused-const-variable -Wno-unused-private-field"')
+            if apple_utils.IsTargetArm(context):
+                extraArgs.append('-DOCIO_USE_SSE=OFF')
 
         # Add on any user-specified extra arguments.
         extraArgs += buildArgs
